@@ -1,0 +1,12 @@
+{
+    "name": "Deploy Pie API Lambda to Prod",
+    "description": "Deploy Pie API Lambda to Prod workflow template.",
+    "iconName": "deploy-lambda-api-prod",
+    "categories": [
+        "JavaScript"
+    ],
+    "filePatterns": [
+        "index.js$",
+        "package.json$"
+    ]
+}
