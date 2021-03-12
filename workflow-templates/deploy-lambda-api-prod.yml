@@ -1,0 +1,78 @@
+name: Deploy API Lambda to Prod
+on:
+  push:
+    tags:
+      - '*'
+jobs:
+  build:
+    name: Build and deploy
+    strategy:
+      matrix:
+        node-version: [10.x]
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: SSH agent
+        uses: webfactory/ssh-agent@v0.4.1
+        with:
+            ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Install node_modules
+        run: npm i
+
+      - name: Build
+        run: zip -qq -r ./bundle.zip ./ -x '*.git*'
+
+      - name: Deploy to lambda
+        uses: appleboy/lambda-action@master
+        with:
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_region: ${{ secrets.AWS_REGION }}
+          function_name: ${{ github.event.repository.name }}-prod
+          zip_file: bundle.zip
+
+      - name: Get alias name
+        run: echo "ALIAS_NAME=${GITHUB_REF#refs/*/}" | tr "." "-" >> $GITHUB_ENV
+
+      - name: Echo alias name
+        run: echo ${{ env.ALIAS_NAME }}
+
+      - name: Get lambda version
+        run: | 
+          echo LAMBDA_VERSION=`aws lambda list-versions-by-function --function-name ${{ github.event.repository.name }}-prod --no-paginate --query "max_by(Versions, &to_number(to_number(Version) || '0'))" | grep -oP '(?<="Version": ").*(?=",)'` >> $GITHUB_ENV
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+
+      - name: Echo lambda version
+        run: echo ${{ env.LAMBDA_VERSION }}
+
+      - name: Delete existing lambda alias, if exists
+        continue-on-error: true
+        run: aws lambda delete-alias 
+            --function-name ${{ github.event.repository.name }}-prod
+            --name ${{ env.ALIAS_NAME }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+
+      - name: Create new lambda alias
+        run: aws lambda create-alias 
+            --function-name ${{ github.event.repository.name }}-prod
+            --name ${{ env.ALIAS_NAME }}
+            --function-version ${{ env.LAMBDA_VERSION }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}

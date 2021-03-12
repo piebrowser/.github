@@ -1,0 +1,41 @@
+name: Deploy API Lambda to Dev
+on:
+  push:
+    branches:
+      - develop
+jobs:
+  build:
+    name: Build and deploy
+    strategy:
+      matrix:
+        node-version: [10.x]
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: SSH agent
+        uses: webfactory/ssh-agent@v0.4.1
+        with:
+            ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Install node_modules
+        run: npm i
+
+      - name: Build
+        run: zip -qq -r ./bundle.zip ./ -x '*.git*'
+
+      - name: Deploy to lambda
+        uses: appleboy/lambda-action@master
+        with:
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_region: ${{ secrets.AWS_REGION }}
+          function_name: ${{ github.event.repository.name }}-dev
+          zip_file: bundle.zip
